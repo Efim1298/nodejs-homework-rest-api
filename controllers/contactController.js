@@ -4,9 +4,8 @@ const contacts = require("../models/contacts");
 
 const listContacts = async (req, res) => {
   const result = await contacts.listContacts();
-  res.json(result);
+  res.status(200).json(result);
 };
-console.log(listContacts);
 
 const getContactById = async (req, res) => {
   const { id } = req.params;
@@ -16,21 +15,22 @@ const getContactById = async (req, res) => {
   }
   res.json(result);
 };
-console.log(getContactById);
 
 const addContact = async (req, res) => {
   const result = await contacts.addContact(req.body);
   res.status(201).json(result);
 };
-console.log(addContact);
 
 const updateContact = async (req, res) => {
   const { id } = req.params;
   const result = await contacts.updateContact(id, req.body);
+
   if (!result) {
     throw httpError(404, "Not found");
   }
-  res.json(result);
+  res.json({
+    message: "contact updated",
+  });
 };
 
 const removeContact = async (req, res) => {
