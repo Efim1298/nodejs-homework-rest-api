@@ -4,7 +4,7 @@ const validation = (schema) => {
   return (req, res, next) => {
     const { error } = schema.validate(req.body);
     if (error) {
-      throw BadRequest(`missing ${error.message} field`);
+      throw BadRequest(`${error.message}`);
     }
     next();
   };
