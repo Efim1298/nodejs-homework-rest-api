@@ -1,90 +1,181 @@
-# Домашнє завдання 5
+# Домашнє завдання 6
 
-Створи гілку `hw05-avatars` з гілки ` master`.
+Створи гілку `hw06-email` з гілки` master`.
 
-Продовж створення REST API для роботи з колекцією контактів. Додай можливість
-завантаження аватарки користувача через [Multer]
-(https://github.com/expressjs/multer).
+Продовжуємо створення REST API для роботи з колекцією контактів. Додайте
+верифікацію email користувача після реєстрації за допомогою сервісу
+[SendGrid](https://sendgrid.com/).
+
+## Як процес верифікації повинен працювати
+
+1. Після реєстрації, користувач повинен отримати лист на вказану при реєстрації
+   пошту з посиланням для верифікації свого email
+2. Пройшовши по посиланню в отриманому листі, в перший раз, користувач повинен
+   отримати [Відповідь зі статусом 200](#verification-success-response), що буде
+   мати на увазі успішну верифікацію email
+3. Пройшовши по посиланню повторно користувач повинен отримати
+   [Помилку зі статусом 404](#verification-user-not-found)
 
 ## Крок 1
 
-Створи папку `public` для роздачі статики. У цій папці зроби папку `avatars`.
-Налаштуй Express на роздачу статичних файлів з папки `public`.
+### Підготовка інтеграції з SendGrid API
 
-Поклади будь-яке зображення в папку `public/avatars` і перевір, що роздача
-статики працює. При переході по такому URL браузер відобразить зображення.
+- Зареєструйся на [SendGrid](https://sendgrid.com/).
+- Створи email-відправника. Для цього в адміністративній панелі SendGrid зайдіть
+  в меню Marketing в підменю senders і в правому верхньому куті натисніть кнопку
+  "Create New Sender". Заповніть поля в запропонованій формі. Збережіть. Повинен
+  вийти наступний, як на картинці, результат, тільки з вашим email:
 
-`` `Shell http://locahost:<порт>/avatars/<ім'я файлу з розширенням> `` `
+![Sender](./assets/sender-not-verify.png)
+
+На вказаний email має прийти лист верифікації (перевірте спам якщо не бачите
+листи). Натисніть на посилання в ньому і завершіть процес. Результат повинен
+зміниться на:
+
+![Sender](./assets/sender-verify.png)
+
+- Тепер необхідно створити API токен доступу. Вибираємо меню "Email API", і
+  підменю "Integration Guide". Тут вибираємо "Web API"
+
+![Api-key](./assets/web-api.png)
+
+Далі необхідно вибрати технологію Node.js
+
+![Api-key](./assets/node.png)
+
+На третьому кроці даємо ім'я нашого токену. Наприклад, systemcats, натискаємо
+кнопку згенерувати і отримуємо результат як на скріншоті нижче. Необхідно
+скопіювати цей токен (це важливо, тому що більше ви не зможете його подивитися).
+Після цього завершити процес створення токена
+
+![Api-key](./assets/api-key.png)
+
+- Отриманий API-токен треба додати в `.env` файл в нашому проекті
 
 ## Крок 2
 
-У схему користувача додай нову властивість `avatarURL` для зберігання
-зображення.
+### Створення ендпоінта для верифікації email
 
-```shell
+- додати в модель `User` два поля `verificationToken` і `verify`. Значення поля
+  `verify` рівне `false` означатиме, що його email ще не пройшов верифікацію
+
+```js
 {
-  ...
-  avatarURL: String,
-  ...
+  verify: {
+    type: Boolean,
+    default: false,
+  },
+  verificationToken: {
+    type: String,
+    required: [true, 'Verify token is required'],
+  },
 }
 ```
 
-- Використовуй пакет [gravatar](https://www.npmjs.com/package/gravatar) для
-  того, щоб при реєстрації нового користувача відразу згенерувати йому аватар по
-  його `email`.
+- створити ендпоінт GET [`/users/verify/:verificationToken`](#
+  verification-request), де по параметру `verificationToken` ми будемо шукати
+  користувача в моделі `User`
+- якщо користувач з таким токеном не знайдений, необхідно повернути
+  [Помилку 'Not Found'](#verification-user-not-found)
+- якщо користувач знайдений - встановлюємо `verificationToken` в `null`, а поле
+  `verify` ставимо рівним `true` в документі користувача і повертаємо
+  [Успішну відповідь](#verification-success-response)
+
+### Verification request
+
+```shell
+GET /users/verify/:verificationToken
+```
+
+### Verification user Not Found
+
+```shell
+Status: 404 Not Found
+ResponseBody: {
+  message: 'User not found' }
+```
+
+### Verification success response
+
+```shell
+Status: 200 OK
+ResponseBody: {
+  message: 'Verification successful',}
+```
 
 ## Крок 3
 
-При реєстрації користувача:
+### Додавання відправки email користувачу з посиланням для верифікації
 
-- Створюй посилання на аватарку користувача за допомогою
-  [gravatar](https://www.npmjs.com/package/gravatar)
-- Отриманий URL збережи в поле `avatarURL` під час створення користувача
+При створенні користувача при реєстрації:
+
+- створити `verificationToken` для користувача і записати його у БД (для
+  генерації токена використовуйте пакет
+  [uuid](https://www.npmjs.com/package/uuid) або
+  [nanoid](https://www.npmjs.com/package/nanoid))
+- відправити email на пошту користувача і вказати посилання для верифікації
+  email'а ( `/users/verify/:verificationToken`) в повідомленні
+- Так само необхідно враховувати, що тепер логін користувача не дозволений, якщо
+  не верифікувано email
 
 ## Крок 4
 
-Додай можливість поновлення аватарки, створивши ендпоінт `/users/avatars` і
-використовуючи метод` PATCH`.
+### Додавання повторної відправки email користувачу з посиланням для верифікації
 
-![avatar upload from postman](./assets/avatar-upload.png)
+Необхідно передбачити, варіант, що користувач може випадково видалити лист. Воно
+може не дійти з якоїсь причини до адресата. Наш сервіс відправки листів під час
+реєстрації видав помилку і т.д.
+
+#### @ POST /users/verify
+
+- Отримує `body` у форматі `{email}`
+- Якщо в `body` немає обов'язкового поля `email`, повертає json з ключем
+  `{"message":"missing required field email"}` і статусом `400`
+- Якщо з `body` все добре, виконуємо повторну відправку листа з
+  `verificationToken` на вказаний email, але тільки якщо користувач не
+  верифікований
+- Якщо користувач вже пройшов верифікацію відправити json з ключем
+  `{"message":"Verification has already been passed"}` зі статусом
+  `400 Bad Request`
+
+#### Resending a email request
+
+````shell
+POST /users/verify
+Content-Type: application/json
+RequestBody: {
+  "email": "example@example.com"}
+`` `
+
+#### Resending a email validation error
 
 ```shell
-# Запит
-PATCH /users/avatars
-Content-Type: multipart/form-data
-Authorization: "Bearer {{token}}"
-RequestBody: завантажений файл
+Status: 400 Bad Request
+Content-Type: application/json
+ResponseBody: <Помилка від Joi або іншої бібліотеки валідації>
+````
 
-# Успішна відповідь
-Status: 200 OK
+#### Resending a email success response
+
+```shell
+Status: 200 Ok
 Content-Type: application/json
 ResponseBody: {
-  "avatarURL": "тут буде посилання на зображення"
-}
-
-# Неуспішна відповідь
-Status: 401 Unauthorized
-Content-Type: application/json
-ResponseBody: {
-  "message": "Not authorized"
-}
+  "message": "Verification email sent"}
 ```
 
-- Створи папку `tmp` в корені проекту і зберігай в неї завантажену аватарку.
-- Оброби аватарку пакетом [jimp](https://www.npmjs.com/package/jimp) і постав
-  для неї розміри 250 на 250
-- Перенеси аватарку користувача з папки `tmp` в папку `public/avatars` і дай їй
-  унікальне ім'я для конкретного користувача.
-- Отриманий `URL` `/avatars/<ім'я файлу з розширенням>` та збережи в поле
-  `avatarURL` користувача
+#### Resend email for verified user
+
+```shell
+Status: 400 Bad Request
+Content-Type: application/json
+ResponseBody: {
+  message: "Verification has already been passed"}
+```
+
+> Примітка: Як альтернативу SendGrid можна використовувати пакет
+> [nodemailer](https://www.npmjs.com/package/nodemailer)
 
 ## Додаткове завдання - необов'язкове
 
-### 1. Написати unit-тести для контролера входу (логін)
-
-За допомогою [Jest](https://jestjs.io/ru/docs/getting-started)
-
-- відповідь повина мати статус-код 200
-- у відповіді повинен повертатися токен
-- у відповіді повинен повертатися об'єкт `user` з 2 полями `email` та
-  `subscription` з типом даних `String`
+### 1. Напишіть dockerfile для вашої програми
